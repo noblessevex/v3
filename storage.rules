@@ -1,0 +1,54 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Admin authorization by UID
+    // Set ADMIN_UID to your Firebase Auth UID (from Firebase Console > Authentication)
+    function isAdmin() {
+      let ADMIN_UID = "REPLACE_ME";
+      return isSignedIn() && request.auth.uid == ADMIN_UID;
+    }
+
+    // Profile pictures: students can upload their own avatar up to 5 MB
+    match /avatars/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if (isAdmin() || (isSignedIn() && request.auth.uid == userId))
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Community chat photos: signed-in students can upload photos up to 10 MB
+    match /community/{fileName} {
+      allow read: if isSignedIn() || isAdmin();
+      allow write: if isSignedIn()
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Course materials and assets: admin write, public/signed-in read
+    match /course_materials/{fileName=**} {
+      allow read: if isSignedIn() || isAdmin();
+      allow write: if isAdmin() && request.resource.size < 30 * 1024 * 1024;
+    }
+
+    // Payment receipts: students can upload receipts for their payments up to 10 MB
+    match /payment_receipts/{userId}/{fileName} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow write: if (isAdmin() || (isSignedIn() && request.auth.uid == userId))
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Public read for site images (hero, gallery, courses), admin write up to 15 MB
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() 
+        && request.resource.size < 15 * 1024 * 1024 
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

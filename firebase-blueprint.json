@@ -1,0 +1,151 @@
+{
+  "entities": {
+    "BookingRequest": {
+      "title": "BookingRequest",
+      "description": "Student lesson booking inquiry submitted from the public site or recorded by admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 150 },
+        "instrument": { "type": "string", "maxLength": 100 },
+        "frequency": { "type": "string", "maxLength": 100 },
+        "sessionLength": { "type": "string", "maxLength": 50 },
+        "sessionBlocks": { "type": "number" },
+        "pricePerWeek": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "preferredLocation": { "type": "string", "maxLength": 150 },
+        "message": { "type": "string", "maxLength": 2000 },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "confirmed", "scheduled", "cancelled"]
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["unpaid", "paid"]
+        },
+        "appointmentDate": { "type": "string" },
+        "appointmentTime": { "type": "string" },
+        "invoiceNotes": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "phone", "email", "instrument", "frequency", "sessionLength", "totalPrice", "status"]
+    },
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Live customizable site content, hero details, pricing, and statements",
+      "type": "object",
+      "properties": {
+        "heroTaglineEn": { "type": "string", "maxLength": 200 },
+        "heroTaglineFr": { "type": "string", "maxLength": 200 },
+        "heroLocationEn": { "type": "string", "maxLength": 200 },
+        "heroLocationFr": { "type": "string", "maxLength": 200 },
+        "heroDegreeEn": { "type": "string", "maxLength": 200 },
+        "heroDegreeFr": { "type": "string", "maxLength": 200 },
+        "heroPhotoUrl": { "type": "string" },
+        "aboutHeadingEn": { "type": "string", "maxLength": 500 },
+        "aboutHeadingFr": { "type": "string", "maxLength": 500 },
+        "aboutAccentPhraseEn": { "type": "string", "maxLength": 200 },
+        "aboutAccentPhraseFr": { "type": "string", "maxLength": 200 },
+        "aboutParagraphEn": { "type": "string", "maxLength": 1000 },
+        "aboutParagraphFr": { "type": "string", "maxLength": 1000 },
+        "ratePer30Min": { "type": "number" }
+      }
+    },
+    "CourseItem": {
+      "title": "CourseItem",
+      "description": "Instrument course definition displayed in card deck",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "order": { "type": "number" },
+        "nameEn": { "type": "string", "maxLength": 120 },
+        "nameFr": { "type": "string", "maxLength": 120 },
+        "taglineEn": { "type": "string", "maxLength": 250 },
+        "taglineFr": { "type": "string", "maxLength": 250 },
+        "descriptionEn": { "type": "string", "maxLength": 1000 },
+        "descriptionFr": { "type": "string", "maxLength": 1000 },
+        "levelEn": { "type": "string", "maxLength": 100 },
+        "levelFr": { "type": "string", "maxLength": 100 },
+        "ageEn": { "type": "string", "maxLength": 100 },
+        "ageFr": { "type": "string", "maxLength": 100 },
+        "popular": { "type": "boolean" },
+        "visible": { "type": "boolean" }
+      },
+      "required": ["id", "nameEn", "nameFr"]
+    },
+    "TeachingRow": {
+      "title": "TeachingRow",
+      "description": "Hairline-ruled teaching credential row",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "order": { "type": "number" },
+        "labelEn": { "type": "string", "maxLength": 80 },
+        "labelFr": { "type": "string", "maxLength": 80 },
+        "nameEn": { "type": "string", "maxLength": 150 },
+        "nameFr": { "type": "string", "maxLength": 150 },
+        "noteEn": { "type": "string", "maxLength": 150 },
+        "noteFr": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["id", "order", "labelEn", "nameEn"]
+    },
+    "StudentAccount": {
+      "title": "StudentAccount",
+      "description": "Enrolled student account with recurring lesson schedule",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "instrument": { "type": "string", "maxLength": 100 },
+        "frequency": { "type": "string", "maxLength": 100 },
+        "requiredDaysCount": { "type": "number" },
+        "isDaily": { "type": "boolean" },
+        "sessionLength": { "type": "string", "maxLength": 50 },
+        "paymentStatus": { "type": "string", "enum": ["unpaid", "paid"] },
+        "daysLocked": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "instrument", "frequency"]
+    },
+    "CalendarSettings": {
+      "title": "CalendarSettings",
+      "description": "Studio hours, capacity limits, and blocked dates",
+      "type": "object",
+      "properties": {
+        "startHour": { "type": "string" },
+        "endHour": { "type": "string" },
+        "maxStudentsPerDay": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/requests/{requestId}": {
+      "schema": { "$ref": "#/entities/BookingRequest" },
+      "description": "Collection of lesson booking inquiries"
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/StudentAccount" },
+      "description": "Student profiles and lesson recurring schedules"
+    },
+    "/settings/calendar": {
+      "schema": { "$ref": "#/entities/CalendarSettings" },
+      "description": "Working hours, open days, and capacity limits"
+    },
+    "/settings/site": {
+      "schema": { "$ref": "#/entities/SiteSettings" },
+      "description": "Global customizable settings including pricing and hero content"
+    },
+    "/content/teaching": {
+      "schema": { "$ref": "#/entities/TeachingRow" },
+      "description": "Ordered teaching experience rows"
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/CourseItem" },
+      "description": "Individual course offerings"
+    }
+  }
+}

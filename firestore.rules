@@ -1,0 +1,259 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Admin authorization by UID
+    // Set ADMIN_UID to your Firebase Auth UID (from Firebase Console > Authentication)
+    function isAdmin() {
+      let ADMIN_UID = "REPLACE_ME";
+      return request.auth != null && request.auth.uid == ADMIN_UID;
+    }
+
+    function isApprovedStudent() {
+      return isSignedIn() && get(/databases/$(database)/documents/students/$(request.auth.uid)).data.approvalStatus == 'approved';
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    // 1. requests: anyone may create, only with status "pending", paymentStatus "unpaid", valid fields and keys <= 20. Only the admin may read, update or delete.
+    match /requests/{requestId} {
+      allow create: if request.resource.data.status == 'pending'
+                    && request.resource.data.paymentStatus == 'unpaid'
+                    && request.resource.data.keys().hasAll(['name', 'phone', 'email', 'instrument', 'frequency', 'sessionLength', 'preferredLocation', 'status', 'paymentStatus'])
+                    && isValidString(request.resource.data.name, 1, 150)
+                    && isValidString(request.resource.data.phone, 1, 50)
+                    && isValidString(request.resource.data.email, 1, 150)
+                    && isValidString(request.resource.data.instrument, 1, 100)
+                    && isValidString(request.resource.data.frequency, 1, 100)
+                    && isValidString(request.resource.data.sessionLength, 1, 50)
+                    && isValidString(request.resource.data.preferredLocation, 1, 150)
+                    && request.resource.data.keys().size() <= 20;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // 2. students/{uid}: a student may create only their own document (uid matches, approvalStatus "pending", paymentStatus "unpaid", daysLocked false, email equals their token email). A student reads only their own document. A student may update only name and phone and, only when approvalStatus is "approved", selectedWeeklyDays, selectedTimeSlots, daysLocked and rescheduledOccurrences, with selectedWeeklyDays.size() <= requiredDaysCount. The admin has full access.
+    match /students/{uid} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.approvalStatus == 'pending'
+        && request.resource.data.paymentStatus == 'unpaid'
+        && request.resource.data.daysLocked == false
+        && request.auth.token.email != null
+        && request.resource.data.email == request.auth.token.email
+      );
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && request.auth.uid == uid
+        && (
+          (resource.data.approvalStatus != 'approved' 
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'photoUrl', 'bio', 'instrumentLevel', 'preferredGenre', 'practiceGoal']))
+          ||
+          (resource.data.approvalStatus == 'approved' 
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'photoUrl', 'bio', 'instrumentLevel', 'preferredGenre', 'practiceGoal', 'selectedWeeklyDays', 'selectedTimeSlots', 'daysLocked', 'rescheduledOccurrences'])
+            && request.resource.data.selectedWeeklyDays.size() <= resource.data.requiredDaysCount)
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 3. Settings / Calendar
+    match /settings/calendar {
+      allow read: if isSignedIn() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // calendar_recurring_days: students may write only if the only change is adding or removing their own uid in studentIds, count == studentIds.size(), and count <= maxStudentsPerDay from settings/calendar (use get()).
+    match /calendar_recurring_days/{dayId} {
+      allow read: if isSignedIn() || isAdmin();
+      allow write: if isAdmin() || (
+        isSignedIn()
+        && request.resource.data.count == request.resource.data.studentIds.size()
+        && request.resource.data.count <= get(/databases/$(database)/documents/settings/calendar).data.maxStudentsPerDay
+        && (
+          (resource == null && request.resource.data.studentIds == [request.auth.uid])
+          ||
+          (resource != null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'studentIds'])
+            && (
+              (request.resource.data.studentIds.toSet().difference(resource.data.studentIds.toSet()) == [request.auth.uid].toSet()
+                && resource.data.studentIds.toSet().difference(request.resource.data.studentIds.toSet()) == [].toSet())
+              ||
+              (resource.data.studentIds.toSet().difference(request.resource.data.studentIds.toSet()) == [request.auth.uid].toSet()
+                && request.resource.data.studentIds.toSet().difference(resource.data.studentIds.toSet()) == [].toSet())
+            )
+          )
+        )
+      );
+    }
+
+    // calendar_recurring_slots: signed-in users read. Create only if student is approved, studentId == auth.uid, and no name/email/phone. Update/delete only if studentId == auth.uid.
+    match /calendar_recurring_slots/{slotId} {
+      allow read: if isSignedIn() || isAdmin();
+      allow create: if isAdmin() || (
+        isApprovedStudent()
+        && request.resource.data.studentId == request.auth.uid
+        && !request.resource.data.keys().hasAny(['name', 'studentName', 'email', 'studentEmail', 'phone', 'studentPhone'])
+      );
+      allow update, delete: if isAdmin() || (
+        isSignedIn()
+        && resource.data.studentId == request.auth.uid
+      );
+    }
+
+    // calendar_single_slots: signed-in users read. Create only if student is approved, studentId == auth.uid, and no name/email/phone. Update/delete only if studentId == auth.uid.
+    match /calendar_single_slots/{slotId} {
+      allow read: if isSignedIn() || isAdmin();
+      allow create: if isAdmin() || (
+        isApprovedStudent()
+        && request.resource.data.studentId == request.auth.uid
+        && !request.resource.data.keys().hasAny(['name', 'studentName', 'email', 'studentEmail', 'phone', 'studentPhone'])
+      );
+      allow update, delete: if isAdmin() || (
+        isSignedIn()
+        && resource.data.studentId == request.auth.uid
+      );
+    }
+
+    // calendar_exceptions: signed-in read. Create and delete only for the student's own studentId (and approved). Admin: anything.
+    match /calendar_exceptions/{exceptionId} {
+      allow read: if isSignedIn() || isAdmin();
+      allow create: if isAdmin() || (
+        isApprovedStudent()
+        && request.resource.data.studentId == request.auth.uid
+      );
+      allow delete: if isAdmin() || (
+        isApprovedStudent()
+        && resource.data.studentId == request.auth.uid
+      );
+      allow update: if isAdmin();
+    }
+
+    // 4. content, courses, settings, gallery, promo: public read, admin write.
+    match /content/{docId=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/{docId=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /courses/{courseId=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /gallery/{imageId=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /promo/{promoId=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 5. library_courses: Admin has full access. Approved students can only read non-draft courses that are public or granted to them.
+    match /library_courses/{courseId} {
+      allow read: if isAdmin() || (
+        isApprovedStudent()
+        && resource.data.get('status', '') != 'draft'
+        && (
+          !('accessStudentIds' in resource.data)
+          || resource.data.accessStudentIds.size() == 0
+          || '*' in resource.data.accessStudentIds
+          || request.auth.uid in resource.data.accessStudentIds
+        )
+      );
+      allow write: if isAdmin();
+    }
+
+    // 5b. library_items: Books, scores, reference PDFs and links.
+    // Admin has full access. Approved students can only read non-draft items that are public or granted to them.
+    match /library_items/{itemId} {
+      allow read: if isAdmin() || (
+        isApprovedStudent()
+        && resource.data.get('status', '') != 'draft'
+        && (
+          !('accessStudentIds' in resource.data)
+          || resource.data.accessStudentIds.size() == 0
+          || '*' in resource.data.accessStudentIds
+          || request.auth.uid in resource.data.accessStudentIds
+        )
+      );
+      allow write: if isAdmin();
+    }
+
+    // 5c. student payments subcollection: students/{uid}/payments/{paymentId}
+    // A student may only create "pending" payments on their own record and cannot edit or confirm them.
+    // Admin has full control to add, edit, confirm, reject, and delete payments.
+    match /students/{uid}/payments/{paymentId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.method in ['cash', 'transfer', 'other']
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // 6. community_messages: Approved students can read and create their own messages (if not muted). Delete/update restricted to admin or message author. Admin can delete/manage anything.
+    match /community_messages/{messageId} {
+      allow read: if isAdmin() || isApprovedStudent();
+      allow create: if isAdmin() || (
+        isApprovedStudent()
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.authorRole == 'student'
+        && isValidString(request.resource.data.authorName, 1, 150)
+        && (
+          (request.resource.data.text is string && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 1000)
+          ||
+          ('imageUrl' in request.resource.data && isValidString(request.resource.data.imageUrl, 1, 2000) && (!('text' in request.resource.data) || (request.resource.data.text is string && request.resource.data.text.size() <= 1000)))
+        )
+        && (!exists(/databases/$(database)/documents/students/$(request.auth.uid)) || get(/databases/$(database)/documents/students/$(request.auth.uid)).data.get('isMuted', false) != true)
+      );
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.studentId == request.auth.uid);
+    }
+
+    // 7. fcm_tokens: Users can register and manage their own FCM device tokens
+    match /fcm_tokens/{tokenId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // 8. in-app notifications: Users can read and mark their notifications as read. Admin has full control.
+    match /notifications/{notifId} {
+      allow read: if isAdmin() || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.userId == 'all'));
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && request.resource.data.userId == 'admin'
+        && request.resource.data.type == 'payment_submitted'
+      );
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && (resource.data.userId == request.auth.uid || resource.data.userId == 'all')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
